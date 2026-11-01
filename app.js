@@ -3,7 +3,6 @@ import { deleteLists, loadLists, saveLists } from './storage.js';
 
 const PAGE_SIZE = 50;
 const EXPORT_URL = 'https://accountscenter.instagram.com/info_and_permissions/';
-const MAX_FILE = 300 * 1024 * 1024;  // A bigger file probably includes photos and could crash the phone.
 const webApp = window.Telegram?.WebApp;
 const app = document.getElementById('app');
 
@@ -31,7 +30,7 @@ function groups() {
   const following = new Set(lists.following);
   return [
     { label: '🤝 Mutuals', title: 'You follow each other', names: lists.followers.filter((n) => following.has(n)) },
-    { label: "🚫 Don't follow me back", title: "You follow them, they don't follow you back", names: lists.following.filter((n) => !followers.has(n)) },
+    { label: "🚫 Don't follow me back", title: "You follow them, they don't follow you back", note: 'This can include deleted or deactivated accounts, which Instagram\'s export doesn\'t mark. Tap a name to check before unfollowing.', names: lists.following.filter((n) => !followers.has(n)) },
     { label: "👀 I don't follow back", title: 'They follow you, you never followed back', names: lists.followers.filter((n) => !following.has(n)) },
   ];
 }
@@ -73,6 +72,7 @@ function showMenu() {
     element('h1', { textContent: 'Instagram followers' }),
     element('p', { className: 'hint', textContent: `Export from ${lists.updated}. Followers: ${lists.followers.length}  Following: ${lists.following.length}` }),
     ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
+    element('p', { className: 'hint', textContent: "These totals should match your Instagram profile. If followers look too low, the export probably wasn't set to All time, so export again." }),
     ...groups().map((group, i) => button(`${group.label} (${group.names.length})`, () => showList(i, 0))),
     exportButton('Request a newer export', 'secondary'),
     filePicker('Choose a newer export'),
@@ -105,6 +105,7 @@ function showList(index, number) {
   show(
     element('h1', { textContent: `${group.title}: ${group.names.length}` }),
     element('p', { className: 'hint', textContent: `Page ${number + 1} of ${pages}` }),
+    ...(group.note ? [element('p', { className: 'hint', textContent: group.note })] : []),
     names.length ? element('ul', {}, ...names.map(profileLink)) : element('p', { textContent: 'Nobody here.' }),
     ...(nav.length ? [element('div', { className: 'row' }, ...nav)] : []),
     button('⬅️ Menu', showMenu),
@@ -130,10 +131,10 @@ function refuse(message) {
   else showUpload();
 }
 
-export async function readBytes(bytes) {
+export async function readExport(source) {
   let found;
   try {
-    found = loadExport(bytes);
+    found = await loadExport(source);
   } catch (e) {
     refuse(e instanceof ExportError ? e.message : "I couldn't read that. Please choose the Instagram export zip.");
     return;
@@ -146,12 +147,8 @@ export async function readBytes(bytes) {
 }
 
 async function readFile(file) {
-  if (file.size > MAX_FILE) {
-    refuse('That file is too large. Export again with only Followers and following selected.');
-    return;
-  }
   show(element('p', { textContent: 'Reading your file…' }));
-  await readBytes(new Uint8Array(await file.arrayBuffer()));
+  await readExport(file);
 }
 
 export const ready = (async () => {
