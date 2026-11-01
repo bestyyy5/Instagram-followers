@@ -84,43 +84,17 @@ function errorNotice() {
 }
 
 const GUIDE = [
-  ['1. Request your data from Instagram', [
-    'Tap the button at the bottom of this page, and log in to Instagram if asked.',
-    'Choose Export your information, then Create export, then your account, then Export to device. The wording may differ slightly.',
-  ]],
-  ['2. Use these settings', [
-    'Customise information: tap Clear all, then tick only Followers and following. Ticking everything makes a huge file.',
-    'Date range: choose All time. Otherwise, older followers go missing and your lists will be wrong.',
-    'Format and Media quality: leave them as they are.',
-  ]],
-  ['3. Wait for the email', [
-    'Tap Start export. Instagram emails you when the file is ready, often within minutes or hours, but it can take longer. Check your spam folder too.',
-    'Download the zip from the link Instagram gives you, and keep it on the device you use Telegram on. It may be in Files or Downloads.',
-  ]],
-  ['4. Choose the zip here', [
-    "Come back here, tap Choose export zip, and select the file. You don't need to unzip it.",
-    'Check that the Followers and Following totals match your Instagram profile.',
-  ]],
-  ['Reading your lists', [
-    'Mutuals: you follow each other.',
-    "Don't follow me back: you follow them, but they don't follow you.",
-    "I don't follow back: they follow you, but you don't follow them.",
-    "Tap a name to open the profile. If an account in Don't follow me back is gone, tap ✕ to hide it.",
-  ]],
-  ['Good to know', [
-    'The lists show the date of your export, not live numbers. Export again whenever you want to refresh them.',
-    "Your zip stays on your device. Your lists are saved to your own Telegram account, and the bot's owner can't see them. Erase my lists removes them.",
-  ]],
+  'Tap Open Instagram export page, then Export your information and Export to device.',
+  'Tick only Followers and following, set Date range to All time, then start the export.',
+  'When Instagram emails you, download the zip and choose it here. No need to unzip it.',
+  'Check that the totals match your profile, then tap a list to see the names.',
 ];
 
 function showGuide() {
   show(
-    button('‹ Back', () => (lists ? showMenu() : showUpload()), 'back'),
+    button('‹ Back', showMenu, 'back'),
     element('h1', { textContent: 'How to use this' }),
-    ...GUIDE.flatMap(([title, lines]) => [
-      element('div', { className: 'section-label', textContent: title }),
-      element('ul', { className: 'card guide' }, ...lines.map((textContent) => element('li', { textContent }))),
-    ]),
+    element('ol', { className: 'card steps' }, ...GUIDE.map((textContent) => element('li', { className: 'step', textContent }))),
     exportButton('Open Instagram export page', 'primary guide-action'),
   );
 }
@@ -137,7 +111,6 @@ function showUpload() {
       step('Start the export. When Instagram emails you, download the zip and choose it here.')),
     exportButton('Open Instagram export page', 'primary'),
     filePicker('Choose export zip', 'quiet'),
-    button('First time? Read the guide', showGuide, 'quiet'),
     element('p', { className: 'hint', textContent: "Your zip is read on this device and never uploaded. Your lists are saved to your own Telegram account, and the bot's owner can't see them." }),
   );
 }
