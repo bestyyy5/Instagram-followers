@@ -2,6 +2,7 @@
 // device. Falls back to this device if Telegram's cloud storage is unavailable.
 
 const LOCAL_KEY = 'lists';
+const HIDDEN_KEY = 'hidden';
 const META_KEY = 'meta';
 const CHUNK_SIZE = 4000;  // Telegram allows 4096 characters per value...
 const MAX_CHUNKS = 1000;  // ...and 1024 keys per person.
@@ -117,10 +118,57 @@ export async function loadLists() {
   return local ? JSON.parse(local) : null;
 }
 
+function loadHiddenLocal() {
+  try {
+    return JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+// Accounts the person hid stay separate from the lists, so they survive a new export.
+export async function loadHidden() {
+  const storage = cloud();
+  if (storage) {
+    try {
+      const saved = await call(storage, 'getItem', HIDDEN_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Cloud load failed', e?.message);
+    }
+  }
+  return loadHiddenLocal();
+}
+
+// Returns false if the names couldn't be saved anywhere that lasts.
+export async function saveHidden(names) {
+  const text = JSON.stringify(names);
+  try {
+    localStorage.setItem(HIDDEN_KEY, text);
+  } catch {
+    // Telegram's cloud below is the main copy anyway.
+  }
+  const storage = cloud();
+  if (!storage) return true;
+  if (text.length > CHUNK_SIZE) return false;
+  try {
+    await call(storage, 'setItem', HIDDEN_KEY, text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function deleteLists() {
   clearLocal();
+  try {
+    localStorage.removeItem(HIDDEN_KEY);
+  } catch {
+    // Nothing saved here, then.
+  }
   const storage = cloud();
   if (!storage) return;
+  await call(storage, 'removeItem', HIDDEN_KEY);
   const meta = await readMeta(storage);
   if (meta) {
     await call(storage, 'removeItem', META_KEY);
