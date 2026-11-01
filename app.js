@@ -2,6 +2,7 @@ import { ExportError, loadExport } from './export.js';
 import { deleteLists, loadLists, saveLists } from './storage.js';
 
 const PAGE_SIZE = 50;
+const EXPORT_URL = 'https://accountscenter.instagram.com/info_and_permissions/';
 const MAX_FILE = 300 * 1024 * 1024;  // A bigger file probably includes photos and could crash the phone.
 const webApp = window.Telegram?.WebApp;
 const app = document.getElementById('app');
@@ -35,6 +36,15 @@ function groups() {
   ];
 }
 
+function openExternal(url) {
+  if (webApp?.initData) webApp.openLink(url);
+  else window.open(url, '_blank', 'noopener');
+}
+
+function exportButton(label, className = '') {
+  return button(label, () => openExternal(EXPORT_URL), className);
+}
+
 function filePicker(label) {
   const input = element('input', { type: 'file', accept: '.zip,application/zip' });
   input.onchange = () => {
@@ -45,13 +55,14 @@ function filePicker(label) {
 
 function showUpload() {
   const steps = element('ol', {},
-    element('li', { textContent: 'In Instagram, go to Accounts Center > Your information and permissions > Export your information.' }),
-    element('li', { textContent: 'Export to your device, including only Followers and following, for All time.' }),
-    element('li', { textContent: 'Download the zip when Instagram says it\'s ready, then choose it below.' }));
+    element('li', { textContent: 'Tap the button below, then choose Export your information and Export to device.' }),
+    element('li', { textContent: 'Under Customise information, tick only Followers and following. Set Date range to All time.' }),
+    element('li', { textContent: 'Start the export. When Instagram emails you, download the zip and choose it below.' }));
   show(
     element('h1', { textContent: 'Instagram followers' }),
     ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
     steps,
+    exportButton('Open Instagram export page'),
     filePicker('Choose export zip'),
     element('p', { className: 'hint', textContent: 'Your zip is read on this device and never uploaded. Your lists are saved to your own Telegram account, and the bot\'s owner can\'t see them.' }),
   );
@@ -63,6 +74,7 @@ function showMenu() {
     element('p', { className: 'hint', textContent: `Export from ${lists.updated}. Followers: ${lists.followers.length}  Following: ${lists.following.length}` }),
     ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
     ...groups().map((group, i) => button(`${group.label} (${group.names.length})`, () => showList(i, 0))),
+    exportButton('Request a newer export', 'secondary'),
     filePicker('Choose a newer export'),
     button('Erase my lists', eraseLists, 'secondary'),
     ...(syncs ? [] : [element('p', { className: 'hint', textContent: 'These lists are saved on this device only.' })]),
@@ -77,10 +89,8 @@ function profileLink(name) {
     target: '_blank',
     rel: 'noopener',
     onclick(event) {
-      if (webApp?.initData) {
-        event.preventDefault();
-        webApp.openLink(url);
-      }
+      event.preventDefault();
+      openExternal(url);
     },
   }));
 }
