@@ -139,20 +139,38 @@ function decodeText(bytes) {
   return parts.join('');
 }
 
+function viewOf(bytes) {
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
 // Returns the entries whose name passes `wanted`, as { name, size, text() }.
-export function readZip(bytes, wanted) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+// `source` is a Uint8Array or a File. Only the parts needed are read, so a large
+// export full of photos doesn't have to fit in memory.
+export async function readZip(source, wanted) {
+  const isBytes = source instanceof Uint8Array;
+  const total = isBytes ? source.length : source.size;
+  const read = async (start, end) => (
+    isBytes ? source.subarray(start, end) : new Uint8Array(await source.slice(start, end).arrayBuffer())
+  );
+
+  const tailStart = Math.max(0, total - 22 - 65535);
+  const tail = await read(tailStart, total);
+  const tailView = viewOf(tail);
   let directoryEnd = -1;
-  for (let i = bytes.length - 22; i >= 0 && i >= bytes.length - 22 - 65535; i--) {
-    if (view.getUint32(i, true) === 0x06054b50) {
+  for (let i = tail.length - 22; i >= 0; i--) {
+    if (tailView.getUint32(i, true) === 0x06054b50) {
       directoryEnd = i;
       break;
     }
   }
   if (directoryEnd < 0) throw new Error('Not a zip file');
 
-  const entryCount = view.getUint16(directoryEnd + 10, true);
-  let cursor = view.getUint32(directoryEnd + 16, true);
+  const entryCount = tailView.getUint16(directoryEnd + 10, true);
+  const directorySize = tailView.getUint32(directoryEnd + 12, true);
+  const directoryStart = tailView.getUint32(directoryEnd + 16, true);
+  const bytes = await read(directoryStart, directoryStart + directorySize);
+  const view = viewOf(bytes);
+  let cursor = 0;
   const entries = [];
   for (let n = 0; n < entryCount; n++) {
     if (cursor + 46 > bytes.length || view.getUint32(cursor, true) !== 0x02014b50) throw new Error('Bad zip directory');
@@ -170,15 +188,17 @@ export function readZip(bytes, wanted) {
     entries.push({
       name,
       size,
-      text() {
-        if (headerOffset + 30 > bytes.length || view.getUint32(headerOffset, true) !== 0x04034b50) throw new Error('Bad zip entry');
-        const start = headerOffset + 30 + view.getUint16(headerOffset + 26, true) + view.getUint16(headerOffset + 28, true);
-        const end = start + compressedSize;
-        if (end > bytes.length) throw new Error('Bad zip entry');
-        if (method === 0) return decodeText(bytes.subarray(start, end));
+      async text() {
+        const header = await read(headerOffset, headerOffset + 30);
+        const headerView = header.length === 30 ? viewOf(header) : null;
+        if (!headerView || headerView.getUint32(0, true) !== 0x04034b50) throw new Error('Bad zip entry');
+        const start = headerOffset + 30 + headerView.getUint16(26, true) + headerView.getUint16(28, true);
+        const data = await read(start, start + compressedSize);
+        if (data.length !== compressedSize) throw new Error('Bad zip entry');
+        if (method === 0) return decodeText(data);
         if (method !== 8) throw new Error('Unsupported compression');
         const output = new Uint8Array(size);
-        inflate(bytes, start, end, output);
+        inflate(data, 0, data.length, output);
         return decodeText(output);
       },
     });

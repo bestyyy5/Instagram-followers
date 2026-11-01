@@ -37,14 +37,15 @@ function groups() {
   const hidden = notBack.filter(isDeleted).length;
   const hiddenNote = hidden ? `${hidden} deleted ${hidden === 1 ? 'account is' : 'accounts are'} hidden. ` : '';
   return [
-    { label: '🤝 Mutuals', title: 'You follow each other', names: lists.followers.filter((n) => following.has(n) && !isDeleted(n)) },
+    { icon: '🤝', label: 'Mutuals', title: 'You follow each other', names: lists.followers.filter((n) => following.has(n) && !isDeleted(n)) },
     {
-      label: "🚫 Don't follow me back",
+      icon: '🚫',
+      label: "Don't follow me back",
       title: "You follow them, they don't follow you back",
       note: `${hiddenNote}Other deactivated accounts can still appear here. Tap a name to check before unfollowing.`,
       names: notBack.filter((n) => !isDeleted(n)),
     },
-    { label: "👀 I don't follow back", title: 'They follow you, you never followed back', names: lists.followers.filter((n) => !following.has(n) && !isDeleted(n)) },
+    { icon: '👀', label: "I don't follow back", title: 'They follow you, you never followed back', names: lists.followers.filter((n) => !following.has(n) && !isDeleted(n)) },
   ];
 }
 
@@ -53,59 +54,92 @@ function openExternal(url) {
   else window.open(url, '_blank', 'noopener');
 }
 
-function exportButton(label, className = '') {
+function exportButton(label, className) {
   return button(label, () => openExternal(EXPORT_URL), className);
 }
 
-function filePicker(label) {
+function menuRow(icon, label, onclick, { count, className = '' } = {}) {
+  const node = button('', onclick, `row ${className}`);
+  node.append(
+    element('span', { className: 'icon', textContent: icon }),
+    element('span', { className: 'label', textContent: label }),
+    ...(count === undefined ? [] : [element('span', { className: 'count', textContent: count })]),
+    element('span', { className: 'chevron', textContent: '›' }),
+  );
+  return node;
+}
+
+function filePicker(label, className) {
   const input = element('input', { type: 'file', accept: '.zip,application/zip' });
   input.onchange = () => {
     if (input.files[0]) readFile(input.files[0]);
   };
-  return element('label', { className: 'file' }, label, input);
+  return element('label', { className, textContent: label }, input);
+}
+
+function errorNotice() {
+  return notice ? [element('p', { className: 'error', textContent: notice })] : [];
 }
 
 function showUpload() {
-  const steps = element('ol', {},
-    element('li', { textContent: 'Tap the button below, then choose Export your information and Export to device.' }),
-    element('li', { textContent: 'Under Customise information, tick only Followers and following. Set Date range to All time.' }),
-    element('li', { textContent: 'Start the export. When Instagram emails you, download the zip and choose it below.' }));
+  const step = (textContent) => element('li', { className: 'step', textContent });
   show(
-    element('h1', { textContent: 'Instagram followers' }),
-    ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
-    steps,
-    exportButton('Open Instagram export page'),
-    filePicker('Choose export zip'),
-    element('p', { className: 'hint', textContent: 'Your zip is read on this device and never uploaded. Your lists are saved to your own Telegram account, and the bot\'s owner can\'t see them.' }),
+    element('h1', { textContent: 'See who follows you back' }),
+    element('p', { className: 'hint', textContent: 'Uses the data export Instagram gives you. No Instagram login here.' }),
+    ...errorNotice(),
+    element('ol', { className: 'card steps' },
+      step('Open the export page, then choose Export your information and Export to device.'),
+      step('Under Customise information, tick only Followers and following. Set Date range to All time.'),
+      step('Start the export. When Instagram emails you, download the zip and choose it here.')),
+    exportButton('Open Instagram export page', 'primary'),
+    filePicker('Choose export zip', 'quiet'),
+    element('p', { className: 'hint', textContent: "Your zip is read on this device and never uploaded. Your lists are saved to your own Telegram account, and the bot's owner can't see them." }),
   );
+}
+
+function stat(value, label) {
+  return element('div', { className: 'stat' },
+    element('strong', { textContent: value }),
+    element('span', { textContent: label }));
 }
 
 function showMenu() {
   show(
-    element('h1', { textContent: 'Instagram followers' }),
-    element('p', { className: 'hint', textContent: `Export from ${lists.updated}. Followers: ${lists.followers.length}  Following: ${lists.following.length}` }),
-    ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
-    element('p', { className: 'hint', textContent: "These totals should match your Instagram profile. If followers look too low, the export probably wasn't set to All time, so export again." }),
-    ...groups().map((group, i) => button(`${group.label} (${group.names.length})`, () => showList(i, 0))),
-    exportButton('Request a newer export', 'secondary'),
-    filePicker('Choose a newer export'),
-    button('Erase my lists', eraseLists, 'secondary'),
+    element('div', { className: 'stats' }, stat(lists.followers.length, 'Followers'), stat(lists.following.length, 'Following')),
+    element('p', { className: 'hint', textContent: `From your ${lists.updated} export. These totals should match your Instagram profile. If followers look too low, the export probably wasn't set to All time, so export again.` }),
+    ...errorNotice(),
+    element('div', { className: 'card' },
+      ...groups().map((group, i) => menuRow(group.icon, group.label, () => showList(i, 0), { count: group.names.length }))),
+    element('div', { className: 'section-label', textContent: 'Update' }),
+    exportButton('Request a newer export', 'quiet'),
+    filePicker('Choose a newer export', 'quiet'),
     ...(syncs ? [] : [element('p', { className: 'hint', textContent: 'These lists are saved on this device only.' })]),
+    element('div', { className: 'section-label', textContent: 'Privacy' }),
+    element('div', { className: 'card' }, button('Erase my lists', eraseLists, 'row danger')),
   );
+}
+
+function avatarColor(name) {
+  let total = 0;
+  for (const character of name) total += character.charCodeAt(0);
+  return total % 7;
 }
 
 function profileLink(name) {
   const url = `https://www.instagram.com/${name}/`;
   return element('li', {}, element('a', {
+    className: 'row',
     href: url,
-    textContent: name,
     target: '_blank',
     rel: 'noopener',
     onclick(event) {
       event.preventDefault();
       openExternal(url);
     },
-  }));
+  },
+  element('span', { className: `avatar avatar-${avatarColor(name)}`, textContent: name.replace(/[._]/g, '')[0] ?? '?' }),
+  element('span', { className: 'label', textContent: name }),
+  element('span', { className: 'chevron', textContent: '›' })));
 }
 
 function showList(index, number) {
@@ -113,15 +147,15 @@ function showList(index, number) {
   const pages = Math.max(1, Math.ceil(group.names.length / PAGE_SIZE));
   const names = group.names.slice(number * PAGE_SIZE, (number + 1) * PAGE_SIZE);
   const nav = [];
-  if (number > 0) nav.push(button('◀️ Previous', () => showList(index, number - 1), 'secondary'));
-  if (number < pages - 1) nav.push(button('Next ▶️', () => showList(index, number + 1), 'secondary'));
+  if (number > 0) nav.push(button('◀️ Previous', () => showList(index, number - 1), 'quiet'));
+  if (number < pages - 1) nav.push(button('Next ▶️', () => showList(index, number + 1), 'quiet'));
   show(
-    element('h1', { textContent: `${group.title}: ${group.names.length}` }),
-    element('p', { className: 'hint', textContent: `Page ${number + 1} of ${pages}` }),
+    button('‹ Menu', showMenu, 'back'),
+    element('h1', { textContent: group.label }),
+    element('p', { className: 'hint', textContent: `${group.title}. ${group.names.length} ${group.names.length === 1 ? 'account' : 'accounts'}, page ${number + 1} of ${pages}.` }),
     ...(group.note ? [element('p', { className: 'hint', textContent: group.note })] : []),
-    names.length ? element('ul', {}, ...names.map(profileLink)) : element('p', { textContent: 'Nobody here.' }),
-    ...(nav.length ? [element('div', { className: 'row' }, ...nav)] : []),
-    button('⬅️ Menu', showMenu),
+    names.length ? element('ul', { className: 'card' }, ...names.map(profileLink)) : element('p', { className: 'hint', textContent: 'Nobody here.' }),
+    ...(nav.length ? [element('div', { className: 'nav' }, ...nav)] : []),
   );
 }
 
@@ -154,20 +188,20 @@ export async function readExport(source) {
   }
   lists = { ...found, updated: new Date().toISOString().slice(0, 10) };
   notice = '';
-  show(element('p', { textContent: 'Saving…' }));
+  show(element('p', { className: 'hint', textContent: 'Saving…' }));
   syncs = await saveLists(lists);
   showMenu();
 }
 
 async function readFile(file) {
-  show(element('p', { textContent: 'Reading your file…' }));
+  show(element('p', { className: 'hint', textContent: 'Reading your file…' }));
   await readExport(file);
 }
 
 export const ready = (async () => {
   webApp?.ready();
   webApp?.expand();
-  show(element('p', { textContent: 'Loading…' }));
+  show(element('p', { className: 'hint', textContent: 'Loading…' }));
   lists = await loadLists();
   if (lists) showMenu();
   else showUpload();

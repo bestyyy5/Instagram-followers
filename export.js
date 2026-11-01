@@ -1,7 +1,8 @@
 import { readZip } from './zip.js';
 
-const FOLLOWERS_FILE = /(^|\/)followers(_\d+)?\.(json|html)$/;
-const FOLLOWING_FILE = /(^|\/)following(_\d+)?\.(json|html)$/;
+// The folder matters: exports also hold Threads files with the same names.
+const FOLLOWERS_FILE = /(^|\/)followers_and_following\/followers(_\d+)?\.(json|html)$/;
+const FOLLOWING_FILE = /(^|\/)followers_and_following\/following(_\d+)?\.(json|html)$/;
 const PROFILE_URL = /^https?:\/\/(?:www\.)?instagram\.com\/(?:_u\/)?([A-Za-z0-9._]+)\/?(?:\?.*)?$/;
 const USERNAME = /^[a-z0-9._]{1,30}$/;
 const MAX_CONTENT = 50 * 1024 * 1024;  // Stops a tiny zip from expanding to fill memory.
@@ -30,8 +31,8 @@ function usernamesFromHtml(text) {
   return Array.from(links, (link) => usernameFromUrl(link[1]));
 }
 
-function addUsernames(names, file) {
-  const text = file.text();
+async function addUsernames(names, file) {
+  const text = await file.text();
   const found = file.name.endsWith('.json') ? usernamesFromJson(text) : usernamesFromHtml(text);
   let valid = 0;
   for (const name of found) {
@@ -46,8 +47,8 @@ function addUsernames(names, file) {
   if (found.length && !valid) throw new ExportError("I couldn't read that. The usernames in it aren't in a format I recognize.");
 }
 
-export function loadExport(bytes) {
-  const files = readZip(bytes, (name) => FOLLOWERS_FILE.test(name) || FOLLOWING_FILE.test(name));
+export async function loadExport(source) {
+  const files = await readZip(source, (name) => FOLLOWERS_FILE.test(name) || FOLLOWING_FILE.test(name));
   if (files.reduce((total, file) => total + file.size, 0) > MAX_CONTENT) {
     throw new ExportError('The follower files in that zip are too large.');
   }
@@ -61,7 +62,7 @@ export function loadExport(bytes) {
 
   const followers = new Set();
   const following = new Set();
-  followerFiles.forEach((file) => addUsernames(followers, file));
-  followingFiles.forEach((file) => addUsernames(following, file));
+  for (const file of followerFiles) await addUsernames(followers, file);
+  for (const file of followingFiles) await addUsernames(following, file);
   return { followers: [...followers].sort(), following: [...following].sort() };
 }
