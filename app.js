@@ -1,0 +1,154 @@
+import { ExportError, loadExport } from './export.js';
+import { deleteLists, loadLists, saveLists } from './storage.js';
+
+const PAGE_SIZE = 50;
+const MAX_FILE = 300 * 1024 * 1024;  // A bigger file probably includes photos and could crash the phone.
+const webApp = window.Telegram?.WebApp;
+const app = document.getElementById('app');
+
+let lists = null;
+let syncs = true;
+let notice = '';
+
+function element(tag, properties = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), properties);
+  node.append(...children);
+  return node;
+}
+
+function button(text, onclick, className = '') {
+  return element('button', { type: 'button', textContent: text, onclick, className });
+}
+
+function show(...nodes) {
+  app.replaceChildren(...nodes);
+  window.scrollTo(0, 0);
+}
+
+function groups() {
+  const followers = new Set(lists.followers);
+  const following = new Set(lists.following);
+  return [
+    { label: '🤝 Mutuals', title: 'You follow each other', names: lists.followers.filter((n) => following.has(n)) },
+    { label: "🚫 Don't follow me back", title: "You follow them, they don't follow you back", names: lists.following.filter((n) => !followers.has(n)) },
+    { label: "👀 I don't follow back", title: 'They follow you, you never followed back', names: lists.followers.filter((n) => !following.has(n)) },
+  ];
+}
+
+function filePicker(label) {
+  const input = element('input', { type: 'file', accept: '.zip,application/zip' });
+  input.onchange = () => {
+    if (input.files[0]) readFile(input.files[0]);
+  };
+  return element('label', { className: 'file' }, label, input);
+}
+
+function showUpload() {
+  const steps = element('ol', {},
+    element('li', { textContent: 'In Instagram, go to Accounts Center > Your information and permissions > Export your information.' }),
+    element('li', { textContent: 'Export to your device, including only Followers and following, for All time.' }),
+    element('li', { textContent: 'Download the zip when Instagram says it\'s ready, then choose it below.' }));
+  show(
+    element('h1', { textContent: 'Instagram followers' }),
+    ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
+    steps,
+    filePicker('Choose export zip'),
+    element('p', { className: 'hint', textContent: 'Your zip is read on this device and never uploaded. Your lists are saved to your own Telegram account, and the bot\'s owner can\'t see them.' }),
+  );
+}
+
+function showMenu() {
+  show(
+    element('h1', { textContent: 'Instagram followers' }),
+    element('p', { className: 'hint', textContent: `Export from ${lists.updated}. Followers: ${lists.followers.length}  Following: ${lists.following.length}` }),
+    ...(notice ? [element('p', { className: 'error', textContent: notice })] : []),
+    ...groups().map((group, i) => button(`${group.label} (${group.names.length})`, () => showList(i, 0))),
+    filePicker('Choose a newer export'),
+    button('Erase my lists', eraseLists, 'secondary'),
+    ...(syncs ? [] : [element('p', { className: 'hint', textContent: 'These lists are saved on this device only.' })]),
+  );
+}
+
+function profileLink(name) {
+  const url = `https://www.instagram.com/${name}/`;
+  return element('li', {}, element('a', {
+    href: url,
+    textContent: name,
+    target: '_blank',
+    rel: 'noopener',
+    onclick(event) {
+      if (webApp?.initData) {
+        event.preventDefault();
+        webApp.openLink(url);
+      }
+    },
+  }));
+}
+
+function showList(index, number) {
+  const group = groups()[index];
+  const pages = Math.max(1, Math.ceil(group.names.length / PAGE_SIZE));
+  const names = group.names.slice(number * PAGE_SIZE, (number + 1) * PAGE_SIZE);
+  const nav = [];
+  if (number > 0) nav.push(button('◀️ Previous', () => showList(index, number - 1), 'secondary'));
+  if (number < pages - 1) nav.push(button('Next ▶️', () => showList(index, number + 1), 'secondary'));
+  show(
+    element('h1', { textContent: `${group.title}: ${group.names.length}` }),
+    element('p', { className: 'hint', textContent: `Page ${number + 1} of ${pages}` }),
+    names.length ? element('ul', {}, ...names.map(profileLink)) : element('p', { textContent: 'Nobody here.' }),
+    ...(nav.length ? [element('div', { className: 'row' }, ...nav)] : []),
+    button('⬅️ Menu', showMenu),
+  );
+}
+
+async function eraseLists() {
+  notice = '';
+  try {
+    await deleteLists();
+    lists = null;
+  } catch {
+    notice = "Couldn't erase your lists. Check your connection and try again.";
+    showMenu();
+    return;
+  }
+  showUpload();
+}
+
+function refuse(message) {
+  notice = message;
+  if (lists) showMenu();
+  else showUpload();
+}
+
+export async function readBytes(bytes) {
+  let found;
+  try {
+    found = loadExport(bytes);
+  } catch (e) {
+    refuse(e instanceof ExportError ? e.message : "I couldn't read that. Please choose the Instagram export zip.");
+    return;
+  }
+  lists = { ...found, updated: new Date().toISOString().slice(0, 10) };
+  notice = '';
+  show(element('p', { textContent: 'Saving…' }));
+  syncs = await saveLists(lists);
+  showMenu();
+}
+
+async function readFile(file) {
+  if (file.size > MAX_FILE) {
+    refuse('That file is too large. Export again with only Followers and following selected.');
+    return;
+  }
+  show(element('p', { textContent: 'Reading your file…' }));
+  await readBytes(new Uint8Array(await file.arrayBuffer()));
+}
+
+export const ready = (async () => {
+  webApp?.ready();
+  webApp?.expand();
+  show(element('p', { textContent: 'Loading…' }));
+  lists = await loadLists();
+  if (lists) showMenu();
+  else showUpload();
+})();
