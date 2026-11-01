@@ -2,6 +2,7 @@ import { ExportError, loadExport } from './export.js';
 import { deleteLists, loadLists, saveLists } from './storage.js';
 
 const PAGE_SIZE = 50;
+const DELETED_PREFIX = '__deleted__';  // How Instagram's export names deleted accounts.
 const EXPORT_URL = 'https://accountscenter.instagram.com/info_and_permissions/';
 const webApp = window.Telegram?.WebApp;
 const app = document.getElementById('app');
@@ -25,13 +26,25 @@ function show(...nodes) {
   window.scrollTo(0, 0);
 }
 
+function isDeleted(name) {
+  return name.startsWith(DELETED_PREFIX);
+}
+
 function groups() {
   const followers = new Set(lists.followers);
   const following = new Set(lists.following);
+  const notBack = lists.following.filter((n) => !followers.has(n));
+  const hidden = notBack.filter(isDeleted).length;
+  const hiddenNote = hidden ? `${hidden} deleted ${hidden === 1 ? 'account is' : 'accounts are'} hidden. ` : '';
   return [
-    { label: '🤝 Mutuals', title: 'You follow each other', names: lists.followers.filter((n) => following.has(n)) },
-    { label: "🚫 Don't follow me back", title: "You follow them, they don't follow you back", note: 'This can include deleted or deactivated accounts, which Instagram\'s export doesn\'t mark. Tap a name to check before unfollowing.', names: lists.following.filter((n) => !followers.has(n)) },
-    { label: "👀 I don't follow back", title: 'They follow you, you never followed back', names: lists.followers.filter((n) => !following.has(n)) },
+    { label: '🤝 Mutuals', title: 'You follow each other', names: lists.followers.filter((n) => following.has(n) && !isDeleted(n)) },
+    {
+      label: "🚫 Don't follow me back",
+      title: "You follow them, they don't follow you back",
+      note: `${hiddenNote}Other deactivated accounts can still appear here. Tap a name to check before unfollowing.`,
+      names: notBack.filter((n) => !isDeleted(n)),
+    },
+    { label: "👀 I don't follow back", title: 'They follow you, you never followed back', names: lists.followers.filter((n) => !following.has(n) && !isDeleted(n)) },
   ];
 }
 
