@@ -93,7 +93,7 @@ const GUIDE = [
 function showGuide() {
   show(
     button('‹ Back', showMenu, 'back'),
-    element('h1', { textContent: 'How to use this' }),
+    element('h1', { textContent: 'Guide' }),
     element('ol', { className: 'card steps' }, ...GUIDE.map((textContent) => element('li', { className: 'step', textContent }))),
     exportButton('Open Instagram export page', 'primary guide-action'),
   );
@@ -134,7 +134,7 @@ function showMenu() {
     ...(syncs ? [] : [element('p', { className: 'hint', textContent: 'These lists are saved on this device only.' })]),
     element('div', { className: 'section-label', textContent: 'Help and privacy' }),
     element('div', { className: 'card' },
-      button('How to use this', showGuide, 'row'),
+      button('Guide', showGuide, 'row'),
       button('Erase my lists', eraseLists, 'row danger')),
   );
 }
